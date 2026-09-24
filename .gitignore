@@ -1,0 +1,13 @@
+.DS_Store
+tools/bin/
+server
+coverage.out
+
+# secrets / local env
+*.env
+*.env.*
+.env
+.env.*
+
+AGENTS.md
+opencode.json
