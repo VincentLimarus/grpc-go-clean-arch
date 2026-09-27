@@ -5,7 +5,8 @@ import (
 
 	"github.com/stretchr/testify/mock"
 
-	"VincentLimarus/grpc-golang/internal/domain/entity"
+	"VincentLimarus/grpc-golang/internal/model/request"
+	"VincentLimarus/grpc-golang/internal/model/response"
 	"VincentLimarus/grpc-golang/internal/usecase"
 )
 
@@ -19,38 +20,37 @@ func NewProductUseCase() *ProductUseCase {
 
 var _ usecase.ProductUseCase = (*ProductUseCase)(nil)
 
-func (m *ProductUseCase) GetProduct(ctx context.Context, id uint64) (*entity.Product, error) {
-	args := m.Called(ctx, id)
-	p, _ := args.Get(0).(*entity.Product)
-	return p, args.Error(1)
+func (m *ProductUseCase) GetProduct(ctx context.Context, req request.GetProductRequest) (*response.ProductResponse, error) {
+	args := m.Called(ctx, req)
+	res, _ := args.Get(0).(*response.ProductResponse)
+	return res, args.Error(1)
 }
 
-func (m *ProductUseCase) ListProducts(ctx context.Context, page, limit int32) ([]*entity.Product, int64, error) {
-	args := m.Called(ctx, page, limit)
-	products, _ := args.Get(0).([]*entity.Product)
-	total, _ := args.Get(1).(int64)
-	return products, total, args.Error(2)
+func (m *ProductUseCase) ListProducts(ctx context.Context, req request.ListProductsRequest) (*response.ProductListResponse, error) {
+	args := m.Called(ctx, req)
+	res, _ := args.Get(0).(*response.ProductListResponse)
+	return res, args.Error(1)
 }
 
-func (m *ProductUseCase) CreateProduct(ctx context.Context, in usecase.CreateProductInput) (*entity.Product, error) {
-	args := m.Called(ctx, in)
-	p, _ := args.Get(0).(*entity.Product)
-	return p, args.Error(1)
+func (m *ProductUseCase) CreateProduct(ctx context.Context, req request.CreateProductRequest) (*response.ProductResponse, error) {
+	args := m.Called(ctx, req)
+	res, _ := args.Get(0).(*response.ProductResponse)
+	return res, args.Error(1)
 }
 
-func (m *ProductUseCase) UpdateProduct(ctx context.Context, in usecase.UpdateProductInput) (*entity.Product, error) {
-	args := m.Called(ctx, in)
-	p, _ := args.Get(0).(*entity.Product)
-	return p, args.Error(1)
+func (m *ProductUseCase) UpdateProduct(ctx context.Context, req request.UpdateProductRequest) (*response.ProductResponse, error) {
+	args := m.Called(ctx, req)
+	res, _ := args.Get(0).(*response.ProductResponse)
+	return res, args.Error(1)
 }
 
-func (m *ProductUseCase) PatchProduct(ctx context.Context, in usecase.PatchProductInput) (*entity.Product, error) {
-	args := m.Called(ctx, in)
-	p, _ := args.Get(0).(*entity.Product)
-	return p, args.Error(1)
+func (m *ProductUseCase) PatchProduct(ctx context.Context, req request.PatchProductRequest) (*response.ProductResponse, error) {
+	args := m.Called(ctx, req)
+	res, _ := args.Get(0).(*response.ProductResponse)
+	return res, args.Error(1)
 }
 
-func (m *ProductUseCase) DeleteProduct(ctx context.Context, id uint64) error {
-	args := m.Called(ctx, id)
+func (m *ProductUseCase) DeleteProduct(ctx context.Context, req request.DeleteProductRequest) error {
+	args := m.Called(ctx, req)
 	return args.Error(0)
 }

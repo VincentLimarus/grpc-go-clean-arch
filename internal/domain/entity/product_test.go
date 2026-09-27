@@ -63,6 +63,30 @@ func TestProduct_Validate(t *testing.T) {
 	}
 }
 
+func TestProduct_ApplyUpdate(t *testing.T) {
+	t.Run("replaces every field", func(t *testing.T) {
+		p, err := entity.NewProduct("Laptop", 1500, 4)
+		require.NoError(t, err)
+		oldCreated := p.CreatedAt
+
+		require.NoError(t, p.ApplyUpdate("  Gaming Laptop  ", 1299, 8))
+		assert.Equal(t, "Gaming Laptop", p.Name)
+		assert.Equal(t, 1299.0, p.Price)
+		assert.Equal(t, int32(8), p.Stock)
+		assert.Equal(t, oldCreated, p.CreatedAt)
+		assert.False(t, p.UpdatedAt.Before(oldCreated))
+	})
+
+	t.Run("invalid after update", func(t *testing.T) {
+		p, err := entity.NewProduct("Laptop", 1500, 4)
+		require.NoError(t, err)
+
+		require.ErrorIs(t, p.ApplyUpdate(" ", 10, 1), entity.ErrNameRequired)
+		require.ErrorIs(t, p.ApplyUpdate("Mouse", 0, 1), entity.ErrPriceInvalid)
+		require.ErrorIs(t, p.ApplyUpdate("Mouse", 10, -1), entity.ErrStockInvalid)
+	})
+}
+
 func TestProduct_ApplyPatch(t *testing.T) {
 	p, err := entity.NewProduct("Laptop", 1500, 4)
 	require.NoError(t, err)

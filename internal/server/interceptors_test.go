@@ -35,7 +35,9 @@ func (s *stubProductServer) CreateProduct(ctx context.Context, req *pb.CreatePro
 	panic("boom")
 }
 
-func TestMapDomainError(t *testing.T) {
+func TestErrorRegistry_Status(t *testing.T) {
+	registry := DefaultErrorRegistry()
+
 	table := []struct {
 		name string
 		err  error
@@ -53,14 +55,30 @@ func TestMapDomainError(t *testing.T) {
 	}
 	for _, tc := range table {
 		t.Run(tc.name, func(t *testing.T) {
-			got := mapDomainError(tc.err, productErrorMappings)
+			got := registry.Status(tc.err)
 			assert.Equal(t, tc.code, status.Code(got))
 		})
 	}
 }
 
+func TestErrorRegistry_RegisterIsAdditive(t *testing.T) {
+	sentinel := errors.New("order already shipped")
+	registry := DefaultErrorRegistry().Register(sentinel, codes.FailedPrecondition)
+
+	assert.Equal(t, codes.FailedPrecondition, status.Code(registry.Status(sentinel)))
+	assert.Equal(t, codes.NotFound, status.Code(registry.Status(domain.ErrNotFound)))
+}
+
+func TestErrorRegistry_RegisterDoesNotMutateSource(t *testing.T) {
+	source := []ErrorMapping{{Sentinel: domain.ErrNotFound, Code: codes.NotFound}}
+	registry := NewErrorRegistry(source...).Register(entity.ErrNameRequired, codes.InvalidArgument)
+
+	assert.Len(t, source, 1)
+	assert.Len(t, registry.mappings, 2)
+}
+
 func TestErrorMappingInterceptor(t *testing.T) {
-	interceptor := errorMappingInterceptor(productErrorMappings)
+	interceptor := errorMappingInterceptor(DefaultErrorRegistry())
 
 	table := []struct {
 		name     string

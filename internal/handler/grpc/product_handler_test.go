@@ -22,9 +22,10 @@ import (
 	"VincentLimarus/grpc-golang/internal/domain/entity"
 	grpchandler "VincentLimarus/grpc-golang/internal/handler/grpc"
 	"VincentLimarus/grpc-golang/internal/mocks"
+	"VincentLimarus/grpc-golang/internal/model/request"
+	"VincentLimarus/grpc-golang/internal/model/response"
 	"VincentLimarus/grpc-golang/internal/pb"
 	"VincentLimarus/grpc-golang/internal/server"
-	"VincentLimarus/grpc-golang/internal/usecase"
 )
 
 func startServer(t *testing.T) (pb.ProductServiceClient, *mocks.ProductUseCase) {
@@ -50,16 +51,16 @@ func startServer(t *testing.T) (pb.ProductServiceClient, *mocks.ProductUseCase) 
 	return pb.NewProductServiceClient(conn), uc
 }
 
-func sampleEntity(id uint64) *entity.Product {
+func sampleResponse(id uint64) *response.ProductResponse {
 	ts := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
-	return &entity.Product{ID: id, Name: "Laptop", Price: 1500.5, Stock: 4, CreatedAt: ts, UpdatedAt: ts}
+	return &response.ProductResponse{ID: id, Name: "Laptop", Price: 1500.5, Stock: 4, CreatedAt: ts, UpdatedAt: ts}
 }
 
 func TestCreateProduct(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		client, uc := startServer(t)
-		in := usecase.CreateProductInput{Name: "Laptop", Price: 1500.5, Stock: 4}
-		uc.On("CreateProduct", mock.Anything, in).Return(sampleEntity(1), nil).Once()
+		req := request.CreateProductRequest{Name: "Laptop", Price: 1500.5, Stock: 4}
+		uc.On("CreateProduct", mock.Anything, req).Return(sampleResponse(1), nil).Once()
 
 		resp, err := client.CreateProduct(context.Background(), &pb.CreateProductRequest{Name: "Laptop", Price: 1500.5, Stock: 4})
 		require.NoError(t, err)
@@ -73,8 +74,8 @@ func TestCreateProduct(t *testing.T) {
 
 	t.Run("invalid argument", func(t *testing.T) {
 		client, uc := startServer(t)
-		in := usecase.CreateProductInput{Name: "", Price: 10, Stock: 1}
-		uc.On("CreateProduct", mock.Anything, in).Return(nil, entity.ErrNameRequired).Once()
+		req := request.CreateProductRequest{Name: "", Price: 10, Stock: 1}
+		uc.On("CreateProduct", mock.Anything, req).Return(nil, entity.ErrNameRequired).Once()
 
 		_, err := client.CreateProduct(context.Background(), &pb.CreateProductRequest{Name: "", Price: 10, Stock: 1})
 		require.Error(t, err)
@@ -83,8 +84,8 @@ func TestCreateProduct(t *testing.T) {
 
 	t.Run("internal error hides detail", func(t *testing.T) {
 		client, uc := startServer(t)
-		in := usecase.CreateProductInput{Name: "Laptop", Price: 10, Stock: 1}
-		uc.On("CreateProduct", mock.Anything, in).Return(nil, errors.New("secret db detail")).Once()
+		req := request.CreateProductRequest{Name: "Laptop", Price: 10, Stock: 1}
+		uc.On("CreateProduct", mock.Anything, req).Return(nil, errors.New("secret db detail")).Once()
 
 		_, err := client.CreateProduct(context.Background(), &pb.CreateProductRequest{Name: "Laptop", Price: 10, Stock: 1})
 		require.Error(t, err)
@@ -96,7 +97,7 @@ func TestCreateProduct(t *testing.T) {
 func TestGetProduct(t *testing.T) {
 	t.Run("found", func(t *testing.T) {
 		client, uc := startServer(t)
-		uc.On("GetProduct", mock.Anything, uint64(7)).Return(sampleEntity(7), nil).Once()
+		uc.On("GetProduct", mock.Anything, request.GetProductRequest{ID: 7}).Return(sampleResponse(7), nil).Once()
 
 		resp, err := client.GetProduct(context.Background(), &pb.GetProductRequest{Id: 7})
 		require.NoError(t, err)
@@ -105,19 +106,29 @@ func TestGetProduct(t *testing.T) {
 
 	t.Run("not found", func(t *testing.T) {
 		client, uc := startServer(t)
-		uc.On("GetProduct", mock.Anything, uint64(9)).Return(nil, domain.ErrNotFound).Once()
+		uc.On("GetProduct", mock.Anything, request.GetProductRequest{ID: 9}).Return(nil, domain.ErrNotFound).Once()
 
 		_, err := client.GetProduct(context.Background(), &pb.GetProductRequest{Id: 9})
 		require.Error(t, err)
 		assert.Equal(t, codes.NotFound, status.Code(err))
+	})
+
+	t.Run("nil response does not panic", func(t *testing.T) {
+		client, uc := startServer(t)
+		uc.On("GetProduct", mock.Anything, request.GetProductRequest{ID: 5}).Return(nil, nil).Once()
+
+		resp, err := client.GetProduct(context.Background(), &pb.GetProductRequest{Id: 5})
+		if err == nil {
+			assert.Equal(t, uint64(0), resp.GetId())
+		}
 	})
 }
 
 func TestListProducts(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		client, uc := startServer(t)
-		uc.On("ListProducts", mock.Anything, int32(2), int32(5)).
-			Return([]*entity.Product{sampleEntity(1), sampleEntity(2)}, int64(2), nil).Once()
+		uc.On("ListProducts", mock.Anything, request.ListProductsRequest{Page: 2, Limit: 5}).
+			Return(response.NewListResponse([]*response.ProductResponse{sampleResponse(1), sampleResponse(2)}, 2), nil).Once()
 
 		resp, err := client.ListProducts(context.Background(), &pb.ListProductsRequest{Page: 2, Limit: 5})
 		require.NoError(t, err)
@@ -128,72 +139,93 @@ func TestListProducts(t *testing.T) {
 
 	t.Run("empty", func(t *testing.T) {
 		client, uc := startServer(t)
-		uc.On("ListProducts", mock.Anything, int32(0), int32(0)).
-			Return([]*entity.Product{}, int64(0), nil).Once()
+		uc.On("ListProducts", mock.Anything, request.ListProductsRequest{}).
+			Return(response.NewListResponse[*response.ProductResponse](nil, 0), nil).Once()
 
 		resp, err := client.ListProducts(context.Background(), &pb.ListProductsRequest{})
 		require.NoError(t, err)
 		assert.Empty(t, resp.Products)
 		assert.Zero(t, resp.Total)
 	})
+
+	t.Run("repo error", func(t *testing.T) {
+		client, uc := startServer(t)
+		uc.On("ListProducts", mock.Anything, request.ListProductsRequest{Page: 1, Limit: 10}).
+			Return(nil, errors.New("db down")).Once()
+
+		_, err := client.ListProducts(context.Background(), &pb.ListProductsRequest{Page: 1, Limit: 10})
+		require.Error(t, err)
+		assert.Equal(t, codes.Internal, status.Code(err))
+	})
 }
 
 func TestUpdateProduct(t *testing.T) {
-	client, uc := startServer(t)
-	updated := sampleEntity(7)
-	updated.Name = "Laptop Pro"
-	updated.Price = 2200
-	updated.Stock = 2
-	in := usecase.UpdateProductInput{ID: 7, Name: "Laptop Pro", Price: 2200, Stock: 2}
-	uc.On("UpdateProduct", mock.Anything, in).Return(updated, nil).Once()
+	t.Run("success", func(t *testing.T) {
+		client, uc := startServer(t)
+		updated := sampleResponse(7)
+		updated.Name = "Laptop Pro"
+		updated.Price = 2200
+		updated.Stock = 2
+		req := request.UpdateProductRequest{ID: 7, Name: "Laptop Pro", Price: 2200, Stock: 2}
+		uc.On("UpdateProduct", mock.Anything, req).Return(updated, nil).Once()
 
-	resp, err := client.UpdateProduct(context.Background(), &pb.UpdateProductRequest{Id: 7, Name: "Laptop Pro", Price: 2200, Stock: 2})
-	require.NoError(t, err)
-	assert.Equal(t, "Laptop Pro", resp.Name)
-	assert.Equal(t, 2200.0, resp.Price)
-	assert.Equal(t, int32(2), resp.Stock)
+		resp, err := client.UpdateProduct(context.Background(), &pb.UpdateProductRequest{Id: 7, Name: "Laptop Pro", Price: 2200, Stock: 2})
+		require.NoError(t, err)
+		assert.Equal(t, "Laptop Pro", resp.Name)
+		assert.Equal(t, 2200.0, resp.Price)
+		assert.Equal(t, int32(2), resp.Stock)
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		client, uc := startServer(t)
+		req := request.UpdateProductRequest{ID: 9, Name: "Laptop Pro", Price: 2200, Stock: 2}
+		uc.On("UpdateProduct", mock.Anything, req).Return(nil, domain.ErrNotFound).Once()
+
+		_, err := client.UpdateProduct(context.Background(), &pb.UpdateProductRequest{Id: 9, Name: "Laptop Pro", Price: 2200, Stock: 2})
+		require.Error(t, err)
+		assert.Equal(t, codes.NotFound, status.Code(err))
+	})
 }
 
 func TestPatchProduct(t *testing.T) {
 	t.Run("sends only provided fields", func(t *testing.T) {
 		client, uc := startServer(t)
 
-		var gotInput usecase.PatchProductInput
-		uc.On("PatchProduct", mock.Anything, mock.MatchedBy(func(in usecase.PatchProductInput) bool {
-			gotInput = in
+		var gotReq request.PatchProductRequest
+		uc.On("PatchProduct", mock.Anything, mock.MatchedBy(func(in request.PatchProductRequest) bool {
+			gotReq = in
 			return true
-		})).Return(sampleEntity(7), nil).Once()
+		})).Return(sampleResponse(7), nil).Once()
 
 		resp, err := client.PatchProduct(context.Background(), &pb.PatchProductRequest{Id: 7, Name: protoStr("Gaming")})
 		require.NoError(t, err)
 		assert.Equal(t, "Laptop", resp.Name)
-		require.Equal(t, uint64(7), gotInput.ID)
-		require.NotNil(t, gotInput.Patch.Name)
-		assert.Equal(t, "Gaming", *gotInput.Patch.Name)
-		assert.Nil(t, gotInput.Patch.Price)
-		assert.Nil(t, gotInput.Patch.Stock)
+		require.Equal(t, uint64(7), gotReq.ID)
+		require.NotNil(t, gotReq.Name)
+		assert.Equal(t, "Gaming", *gotReq.Name)
+		assert.Nil(t, gotReq.Price)
+		assert.Nil(t, gotReq.Stock)
 	})
 
 	t.Run("price only", func(t *testing.T) {
 		client, uc := startServer(t)
 
-		var gotInput usecase.PatchProductInput
-		uc.On("PatchProduct", mock.Anything, mock.MatchedBy(func(in usecase.PatchProductInput) bool {
-			gotInput = in
+		var gotReq request.PatchProductRequest
+		uc.On("PatchProduct", mock.Anything, mock.MatchedBy(func(in request.PatchProductRequest) bool {
+			gotReq = in
 			return true
-		})).Return(sampleEntity(7), nil).Once()
+		})).Return(sampleResponse(7), nil).Once()
 
 		_, err := client.PatchProduct(context.Background(), &pb.PatchProductRequest{Id: 7, Price: protoF64(999)})
 		require.NoError(t, err)
-		require.NotNil(t, gotInput.Patch.Price)
-		assert.Equal(t, 999.0, *gotInput.Patch.Price)
-		assert.Nil(t, gotInput.Patch.Name)
+		require.NotNil(t, gotReq.Price)
+		assert.Equal(t, 999.0, *gotReq.Price)
+		assert.Nil(t, gotReq.Name)
 	})
 
 	t.Run("no fields maps to invalid argument", func(t *testing.T) {
 		client, uc := startServer(t)
-		in := usecase.PatchProductInput{ID: 7}
-		uc.On("PatchProduct", mock.Anything, in).Return(nil, entity.ErrNoPatchFields).Once()
+		uc.On("PatchProduct", mock.Anything, request.PatchProductRequest{ID: 7}).Return(nil, entity.ErrNoPatchFields).Once()
 
 		_, err := client.PatchProduct(context.Background(), &pb.PatchProductRequest{Id: 7})
 		require.Error(t, err)
@@ -204,7 +236,7 @@ func TestPatchProduct(t *testing.T) {
 func TestDeleteProduct(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		client, uc := startServer(t)
-		uc.On("DeleteProduct", mock.Anything, uint64(3)).Return(nil).Once()
+		uc.On("DeleteProduct", mock.Anything, request.DeleteProductRequest{ID: 3}).Return(nil).Once()
 
 		resp, err := client.DeleteProduct(context.Background(), &pb.DeleteProductRequest{Id: 3})
 		require.NoError(t, err)
@@ -213,7 +245,7 @@ func TestDeleteProduct(t *testing.T) {
 
 	t.Run("not found", func(t *testing.T) {
 		client, uc := startServer(t)
-		uc.On("DeleteProduct", mock.Anything, uint64(9)).Return(domain.ErrNotFound).Once()
+		uc.On("DeleteProduct", mock.Anything, request.DeleteProductRequest{ID: 9}).Return(domain.ErrNotFound).Once()
 
 		_, err := client.DeleteProduct(context.Background(), &pb.DeleteProductRequest{Id: 9})
 		require.Error(t, err)

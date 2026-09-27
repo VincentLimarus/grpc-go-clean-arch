@@ -56,6 +56,14 @@ func (p *Product) Validate() error {
 	return nil
 }
 
+func (p *Product) ApplyUpdate(name string, price float64, stock int32) error {
+	p.Name = strings.TrimSpace(name)
+	p.Price = price
+	p.Stock = stock
+	p.touch()
+	return p.Validate()
+}
+
 func (p *Product) ApplyPatch(patch ProductPatch) error {
 	if patch.Name == nil && patch.Price == nil && patch.Stock == nil {
 		return ErrNoPatchFields
@@ -69,6 +77,10 @@ func (p *Product) ApplyPatch(patch ProductPatch) error {
 	if patch.Stock != nil {
 		p.Stock = *patch.Stock
 	}
-	p.UpdatedAt = time.Now().UTC()
+	p.touch()
 	return p.Validate()
+}
+
+func (p *Product) touch() {
+	p.UpdatedAt = time.Now().UTC()
 }

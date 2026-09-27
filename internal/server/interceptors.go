@@ -14,24 +14,55 @@ import (
 	"VincentLimarus/grpc-golang/internal/domain/entity"
 )
 
+const errInternalMessage = "internal server error"
+
 type ErrorMapping struct {
-	sentinel error
-	code     codes.Code
+	Sentinel error
+	Code     codes.Code
+}
+
+type ErrorRegistry struct {
+	mappings []ErrorMapping
+}
+
+func NewErrorRegistry(mappings ...ErrorMapping) *ErrorRegistry {
+	return &ErrorRegistry{mappings: append(make([]ErrorMapping, 0, len(mappings)), mappings...)}
+}
+
+func (r *ErrorRegistry) Register(sentinel error, code codes.Code) *ErrorRegistry {
+	r.mappings = append(r.mappings, ErrorMapping{Sentinel: sentinel, Code: code})
+	return r
+}
+
+func (r *ErrorRegistry) Status(err error) error {
+	for _, m := range r.mappings {
+		if errors.Is(err, m.Sentinel) {
+			return status.Error(m.Code, err.Error())
+		}
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return status.FromContextError(err).Err()
+	}
+	return status.Error(codes.Internal, errInternalMessage)
 }
 
 var productErrorMappings = []ErrorMapping{
-	{sentinel: domain.ErrNotFound, code: codes.NotFound},
-	{sentinel: entity.ErrNameRequired, code: codes.InvalidArgument},
-	{sentinel: entity.ErrPriceInvalid, code: codes.InvalidArgument},
-	{sentinel: entity.ErrStockInvalid, code: codes.InvalidArgument},
-	{sentinel: entity.ErrNoPatchFields, code: codes.InvalidArgument},
+	{Sentinel: domain.ErrNotFound, Code: codes.NotFound},
+	{Sentinel: entity.ErrNameRequired, Code: codes.InvalidArgument},
+	{Sentinel: entity.ErrPriceInvalid, Code: codes.InvalidArgument},
+	{Sentinel: entity.ErrStockInvalid, Code: codes.InvalidArgument},
+	{Sentinel: entity.ErrNoPatchFields, Code: codes.InvalidArgument},
+}
+
+func DefaultErrorRegistry() *ErrorRegistry {
+	return NewErrorRegistry(productErrorMappings...)
 }
 
 func UnaryInterceptors(logger *slog.Logger) []grpc.UnaryServerInterceptor {
 	return []grpc.UnaryServerInterceptor{
 		recoveryInterceptor(logger),
 		loggingInterceptor(logger),
-		errorMappingInterceptor(productErrorMappings),
+		errorMappingInterceptor(DefaultErrorRegistry()),
 	}
 }
 
@@ -44,7 +75,7 @@ func recoveryInterceptor(logger *slog.Logger) grpc.UnaryServerInterceptor {
 					"panic", r,
 				)
 				resp = nil
-				err = status.Error(codes.Internal, "internal server error")
+				err = status.Error(codes.Internal, errInternalMessage)
 			}
 		}()
 		return handler(ctx, req)
@@ -64,7 +95,7 @@ func loggingInterceptor(logger *slog.Logger) grpc.UnaryServerInterceptor {
 	}
 }
 
-func errorMappingInterceptor(mappings []ErrorMapping) grpc.UnaryServerInterceptor {
+func errorMappingInterceptor(registry *ErrorRegistry) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		resp, err := handler(ctx, req)
 		if err == nil {
@@ -73,18 +104,6 @@ func errorMappingInterceptor(mappings []ErrorMapping) grpc.UnaryServerIntercepto
 		if s, ok := status.FromError(err); ok && s.Code() != codes.Unknown {
 			return nil, err
 		}
-		return nil, mapDomainError(err, mappings)
+		return nil, registry.Status(err)
 	}
-}
-
-func mapDomainError(err error, mappings []ErrorMapping) error {
-	for _, m := range mappings {
-		if errors.Is(err, m.sentinel) {
-			return status.Error(m.code, err.Error())
-		}
-	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return status.FromContextError(err).Err()
-	}
-	return status.Error(codes.Internal, "internal server error")
 }

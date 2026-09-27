@@ -8,7 +8,10 @@ import (
 
 	"VincentLimarus/grpc-golang/internal/domain/entity"
 	"VincentLimarus/grpc-golang/internal/domain/repository"
+	"VincentLimarus/grpc-golang/internal/shared/pagination"
 )
+
+const productOrderBy = "id ASC"
 
 type ProductModel struct {
 	ID        uint64    `gorm:"column:id;primaryKey;autoIncrement"`
@@ -57,7 +60,7 @@ func (r *ProductRepository) GetByID(ctx context.Context, id uint64) (*entity.Pro
 }
 
 func (r *ProductRepository) List(ctx context.Context, page, limit int32) ([]*entity.Product, int64, error) {
-	models, total, err := r.base.List(ctx, page, limit, "id ASC")
+	models, total, err := r.base.List(ctx, pagination.New(page, limit), productOrderBy)
 	if err != nil {
 		return nil, 0, err
 	}

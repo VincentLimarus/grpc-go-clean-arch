@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	"VincentLimarus/grpc-golang/internal/domain"
+	"VincentLimarus/grpc-golang/internal/shared/pagination"
 )
 
 type BaseRepository[T any] struct {
@@ -32,7 +33,7 @@ func (r *BaseRepository[T]) GetByID(ctx context.Context, id uint64) (*T, error) 
 	return &m, nil
 }
 
-func (r *BaseRepository[T]) List(ctx context.Context, page, limit int32, orderBy string) ([]*T, int64, error) {
+func (r *BaseRepository[T]) List(ctx context.Context, params pagination.Params, orderBy string) ([]*T, int64, error) {
 	var total int64
 	if err := r.db.WithContext(ctx).Model(new(T)).Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -42,8 +43,8 @@ func (r *BaseRepository[T]) List(ctx context.Context, page, limit int32, orderBy
 	if orderBy != "" {
 		q = q.Order(orderBy)
 	}
-	if page > 0 && limit > 0 {
-		q = q.Offset(int((page - 1) * limit)).Limit(int(limit))
+	if params.IsPaged() {
+		q = q.Offset(params.Offset()).Limit(params.Size())
 	}
 
 	items := make([]*T, 0)
