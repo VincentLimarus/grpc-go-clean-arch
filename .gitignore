@@ -1,6 +1,5 @@
 .DS_Store
 tools/bin/
-server
 coverage.out
 
 # secrets / local env
